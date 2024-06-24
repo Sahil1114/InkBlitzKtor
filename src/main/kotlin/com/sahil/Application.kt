@@ -1,5 +1,6 @@
 package com.sahil
 
+import com.google.gson.Gson
 import com.sahil.routes.createRoomRoute
 import com.sahil.routes.getRoomsRoute
 import com.sahil.routes.joinRoomRoute
@@ -18,6 +19,7 @@ fun main(args: Array<String>) {
 }
 
 val server = DrawingServer()
+val gson = Gson()
 
 fun Application.module(testing:Boolean=false) {
 
