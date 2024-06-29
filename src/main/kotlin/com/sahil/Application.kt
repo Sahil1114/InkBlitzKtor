@@ -2,6 +2,7 @@ package com.sahil
 
 import com.google.gson.Gson
 import com.sahil.routes.createRoomRoute
+import com.sahil.routes.gameWebSocketRoute
 import com.sahil.routes.getRoomsRoute
 import com.sahil.routes.joinRoomRoute
 import com.sahil.session.DrawingSession
@@ -40,6 +41,7 @@ fun Application.module(testing:Boolean=false) {
         createRoomRoute()
         getRoomsRoute()
         joinRoomRoute()
+        gameWebSocketRoute()
     }
 
 
