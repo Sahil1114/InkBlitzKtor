@@ -3,8 +3,12 @@
 package com.sahil.data
 
 import com.sahil.data.models.Announcement
+import com.sahil.data.models.ChosenWord
+import com.sahil.data.models.GameState
 import com.sahil.data.models.PhaseChange
 import com.sahil.gson
+import com.sahil.utils.transformToUnderscores
+import com.sahil.utils.words
 import io.ktor.websocket.*
 import kotlinx.coroutines.*
 
@@ -16,7 +20,10 @@ class Room(
 
     private var timerJob : Job?=null
     private var drawingPlayer : Player?=null
+    private var winningPlayers = listOf<String>()
     private var phaseChangedListener : ((Phase) -> Unit) ? = null
+    private var word:String?=null
+    private var currentWords:List<String>?=null
 
     var phase = Phase.WAITING_FOR_PLAYERS
         set(value) {
@@ -83,6 +90,11 @@ class Room(
         }
     }
 
+    fun setWordAndSwitchToGameRunning(word:String){
+        this.word=word
+        phase=Phase.GAME_RUNNING
+    }
+
     private fun timeAndNotify(ms:Long){
         timerJob?.cancel()
         timerJob= GlobalScope.launch {
@@ -137,9 +149,55 @@ class Room(
 
     private fun newRound(){}
 
-    private fun gameRunning(){}
+    private fun gameRunning(){
+        winningPlayers= listOf()
+        val wordToSend = word ?:currentWords?.random() ?:words.random()
+        val wordWithUnderscores = wordToSend.transformToUnderscores()
+        val drawingUsername = (drawingPlayer?:players.random()).username
 
-    private fun showWord(){}
+        val gameStateForDrawingPlayer = GameState(
+            drawingUsername,
+            wordToSend
+        )
+        val gameStateForGuessingPlayer = GameState(
+            drawingUsername,
+            wordWithUnderscores
+        )
+
+        GlobalScope.launch {
+            broadcastToAllExcept(
+                gson.toJson(gameStateForGuessingPlayer),
+                drawingPlayer?.clientId?:players.random().clientId
+            )
+            drawingPlayer?.socket?.send(Frame.Text(gson.toJson(gameStateForDrawingPlayer)))
+            timeAndNotify(DELAY_GAME_RUNNING_TO_SHOW_WORD)
+            println("Drawing phase in a romm $name started" +
+                    " It will last ${DELAY_GAME_RUNNING_TO_SHOW_WORD/1000}s")
+        }
+
+
+
+    }
+
+    private fun showWord(){
+        GlobalScope.launch {
+            if (winningPlayers.isEmpty()) {
+                drawingPlayer?.let {
+                    it.score -= PENALITY_NOBODY_GUESSED_IT
+                }
+            }
+            word?.let {
+                val chosenWord = ChosenWord(
+                    it,
+                    name
+                )
+                broadcast(gson.toJson(chosenWord))
+            }
+            timeAndNotify(DELAY_SHOW_WORD_TO_NEW_ROUND)
+            val phaseChange= PhaseChange(Phase.SHOW_WORD, DELAY_SHOW_WORD_TO_NEW_ROUND)
+            broadcast(gson.toJson(phaseChange))
+        }
+    }
 
     enum class Phase{
         WAITING_FOR_PLAYERS,
@@ -155,5 +213,6 @@ class Room(
         const val DELAY_NEW_ROUND_TO_GAME_RUNNING = 20000L
         const val DELAY_GAME_RUNNING_TO_SHOW_WORD = 60000L
         const val DELAY_SHOW_WORD_TO_NEW_ROUND = 60000L
+        const val PENALITY_NOBODY_GUESSED_IT = 50
     }
 }

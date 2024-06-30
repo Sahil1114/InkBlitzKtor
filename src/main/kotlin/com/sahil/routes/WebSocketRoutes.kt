@@ -9,7 +9,9 @@ import com.sahil.server
 import com.sahil.session.DrawingSession
 import com.sahil.utils.Constants.TYPE_ANNOUNCEMENT
 import com.sahil.utils.Constants.TYPE_CHAT_MESSAGE
+import com.sahil.utils.Constants.TYPE_CHOSEN_WORD
 import com.sahil.utils.Constants.TYPE_DRAW_DATA
+import com.sahil.utils.Constants.TYPE_GAME_STATE
 import com.sahil.utils.Constants.TYPE_JOIN_ROOM_HANDSHAKE
 import com.sahil.utils.Constants.TYPE_PHASE_CHANGE
 import io.ktor.server.routing.*
@@ -45,6 +47,10 @@ fun Route.gameWebSocketRoute(){
                     if (room.phase==Room.Phase.GAME_RUNNING){
                         room.broadcastToAllExcept(message, clientId)
                     }
+                }
+                is ChosenWord -> {
+                    val room=server.rooms[payload.roomName]?:return@standardWebSocket
+                    room.setWordAndSwitchToGameRunning(payload.chosenWord)
                 }
                 is ChatMessage -> {
 
@@ -90,6 +96,12 @@ fun Route.standardWebSocket(
                         }
                         TYPE_PHASE_CHANGE -> {
                             PhaseChange::class.java
+                        }
+                        TYPE_CHOSEN_WORD -> {
+                            ChosenWord::class.java
+                        }
+                        TYPE_GAME_STATE -> {
+                            GameState::class.java
                         }
 
                         else-> BaseModel::class.java
