@@ -11,6 +11,7 @@ import com.sahil.utils.Constants.TYPE_ANNOUNCEMENT
 import com.sahil.utils.Constants.TYPE_CHAT_MESSAGE
 import com.sahil.utils.Constants.TYPE_DRAW_DATA
 import com.sahil.utils.Constants.TYPE_JOIN_ROOM_HANDSHAKE
+import com.sahil.utils.Constants.TYPE_PHASE_CHANGE
 import io.ktor.server.routing.*
 import io.ktor.server.sessions.*
 import io.ktor.server.websocket.*
@@ -87,6 +88,10 @@ fun Route.standardWebSocket(
                         TYPE_JOIN_ROOM_HANDSHAKE -> {
                             JoinRoomHandShake::class.java
                         }
+                        TYPE_PHASE_CHANGE -> {
+                            PhaseChange::class.java
+                        }
+
                         else-> BaseModel::class.java
                     }
                     val payload = gson.fromJson(message,type)
