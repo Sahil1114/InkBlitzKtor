@@ -4,7 +4,7 @@ import com.sahil.utils.Constants.TYPE_CHAT_MESSAGE
 
 data class ChatMessage (
     val from : String,
-    val to : String,
+    val roomName : String,
     val message : String,
     val timeStamp : Long
 ):BaseModel(TYPE_CHAT_MESSAGE)

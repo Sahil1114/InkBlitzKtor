@@ -2,11 +2,10 @@
 
 package com.sahil.data
 
-import com.sahil.data.models.Announcement
-import com.sahil.data.models.ChosenWord
-import com.sahil.data.models.GameState
-import com.sahil.data.models.PhaseChange
+import com.sahil.data.models.*
 import com.sahil.gson
+import com.sahil.utils.getRandomWords
+import com.sahil.utils.matchesWord
 import com.sahil.utils.transformToUnderscores
 import com.sahil.utils.words
 import io.ktor.websocket.*
@@ -24,6 +23,8 @@ class Room(
     private var phaseChangedListener : ((Phase) -> Unit) ? = null
     private var word:String?=null
     private var currentWords:List<String>?=null
+    private var drawingPlayerIndex = 0
+    private var startTime=0L
 
     var phase = Phase.WAITING_FOR_PLAYERS
         set(value) {
@@ -98,6 +99,7 @@ class Room(
     private fun timeAndNotify(ms:Long){
         timerJob?.cancel()
         timerJob= GlobalScope.launch {
+            startTime=System.currentTimeMillis()
             val phaseChange= PhaseChange(
                 phase,
                 ms,
@@ -147,7 +149,68 @@ class Room(
         }
     }
 
-    private fun newRound(){}
+    private fun newRound(){
+        currentWords= getRandomWords(3)
+        val newWords = NewWords(currentWords!!)
+        nextDrawingPlayer()
+        GlobalScope.launch {
+            drawingPlayer?.socket?.send(Frame.Text(gson.toJson(newWords)))
+            timeAndNotify(DELAY_NEW_ROUND_TO_GAME_RUNNING)
+        }
+    }
+
+    private fun isGuessCorrect(guess:ChatMessage):Boolean{
+        return guess.matchesWord(word?:return false)
+                && !winningPlayers.contains(guess.from)
+                && guess.from!= drawingPlayer?.username
+                && phase == Phase.GAME_RUNNING
+    }
+
+    private fun addWinningPlayer(userName:String):Boolean{
+        winningPlayers = winningPlayers + userName
+        return if(winningPlayers.size==players.size-1){
+            phase=Phase.NEW_ROUND
+            true
+        }else{
+            false
+        }
+    }
+
+    suspend fun checkWordAndNotifyPlayers(message: ChatMessage):Boolean{
+        if(isGuessCorrect(message)){
+            val guessingTime= System.currentTimeMillis()- startTime
+            val timePercentageLeft= 1f -guessingTime.toFloat()/ DELAY_GAME_RUNNING_TO_SHOW_WORD
+            val score= GUESS_SCORE_DEFAULT+ GUESS_SCORE_PERCENTAGE_MULTIPLIER*timePercentageLeft
+
+            val player=players.find { it.username==message.from }
+
+            player?.let {
+                it.score+=score.toInt()
+            }
+            drawingPlayer?.let {
+                it.score+= GUESS_SCORE_FOR_DRAWING_PLAYER/players.size
+            }
+
+            val announcement= Announcement(
+                "${message.from} has guessed it",
+                System.currentTimeMillis(),
+                Announcement.TYPE_PLAYER_GUESSED_WORD
+            )
+
+            broadcast(gson.toJson(announcement))
+            val isRoundOver = addWinningPlayer(message.from)
+            if (isRoundOver){
+                val roundOverAnnouncement=Announcement(
+                    "Everbody guessed it! New round is starting..",
+                    System.currentTimeMillis(),
+                    Announcement.TYPE_EVERYBODY_GUESS
+                )
+                broadcast(gson.toJson(roundOverAnnouncement))
+            }
+            return true
+        }
+        return false
+    }
 
     private fun gameRunning(){
         winningPlayers= listOf()
@@ -167,23 +230,41 @@ class Room(
         GlobalScope.launch {
             broadcastToAllExcept(
                 gson.toJson(gameStateForGuessingPlayer),
-                drawingPlayer?.clientId?:players.random().clientId
+                drawingPlayer?.clientId ?: players.random().clientId
             )
             drawingPlayer?.socket?.send(Frame.Text(gson.toJson(gameStateForDrawingPlayer)))
             timeAndNotify(DELAY_GAME_RUNNING_TO_SHOW_WORD)
-            println("Drawing phase in a romm $name started" +
-                    " It will last ${DELAY_GAME_RUNNING_TO_SHOW_WORD/1000}s")
+            println(
+                "Drawing phase in a romm $name started" +
+                        " It will last ${DELAY_GAME_RUNNING_TO_SHOW_WORD / 1000}s"
+            )
         }
-
-
-
     }
 
+    private fun nextDrawingPlayer(){
+        drawingPlayer?.isDrawing=false
+        if(players.isEmpty()){
+            return
+        }
+
+        drawingPlayer = if(drawingPlayerIndex<=players.size-1){
+            players[drawingPlayerIndex]
+        }else{
+            players.last()
+        }
+
+        drawingPlayerIndex=if(drawingPlayerIndex<players.size-1){
+            drawingPlayerIndex++
+        }else{
+            0
+        }
+
+    }
     private fun showWord(){
         GlobalScope.launch {
             if (winningPlayers.isEmpty()) {
                 drawingPlayer?.let {
-                    it.score -= PENALITY_NOBODY_GUESSED_IT
+                    it.score -= PENALTY_NOBODY_GUESSED_IT
                 }
             }
             word?.let {
@@ -199,6 +280,7 @@ class Room(
         }
     }
 
+
     enum class Phase{
         WAITING_FOR_PLAYERS,
         WAITING_FOR_START,
@@ -213,6 +295,10 @@ class Room(
         const val DELAY_NEW_ROUND_TO_GAME_RUNNING = 20000L
         const val DELAY_GAME_RUNNING_TO_SHOW_WORD = 60000L
         const val DELAY_SHOW_WORD_TO_NEW_ROUND = 60000L
-        const val PENALITY_NOBODY_GUESSED_IT = 50
+
+        const val PENALTY_NOBODY_GUESSED_IT = 50
+        const val GUESS_SCORE_DEFAULT = 50
+        const val GUESS_SCORE_PERCENTAGE_MULTIPLIER = 50
+        const val GUESS_SCORE_FOR_DRAWING_PLAYER =50
     }
 }
