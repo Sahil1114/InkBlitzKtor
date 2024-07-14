@@ -119,6 +119,14 @@ fun Route.standardWebSocket(
         }
         finally {
             // Handle disconnet
+            val playerClientId= server.getRoomWithClientId(session.clientId)?.players.find {
+                it.clientId==session.clientId
+            }
+
+            if (playerClientId!=null){
+                server.playerLeft(session.clientId)
+            }
+
         }
 
     }
